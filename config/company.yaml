@@ -72,7 +72,7 @@ agents:
     model: haiku
     max_parallel: 2
     tools: [Read, Grep, Glob, graphify]
-    writes: [findings/scout-{n}.md]
+    writes: ["findings/scout-{n}.md"]
     output_cap_lines: 40
 
   - id: legacy-analyst
@@ -105,7 +105,7 @@ agents:
     tools: [Read, Write, Edit, Bash, Grep, Glob]
     bash_allow: ["composer test*", "vendor/bin/pint*", "php -l *", "php deploy/checks/*", "git diff*", "git status*"]
     rule_pack: implementer
-    writes: [impl-{n}.md]
+    writes: ["impl-{n}.md"]
     output_cap_lines: 40
 
   - id: contract-specialist
