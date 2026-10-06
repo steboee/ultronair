@@ -1,0 +1,183 @@
+# Ultronair company config. Human-readable reasoning: docs/roster.md
+# kind: orchestrator | worker | code   (code = HQ logic, 0 tokens, shown as grey desk)
+
+models:
+  opus:   { id: claude-opus-5-5,   usd_per_mtok: { in: 4, out: 20 } }
+  sonnet: { id: claude-sonnet-5-5, usd_per_mtok: { in: 2, out: 10 } }
+  haiku:  { id: claude-haiku-4-5,  usd_per_mtok: { in: 1, out: 5 } }   # no effort param
+
+budgets:
+  task_usd:  { S: 3, M: 10, L: 25 }   # pause + approval card when reached
+  daily_usd: 50
+
+project:
+  id: iad-be
+  path: ~/Documents/WORK/WEZEO/Projects/iad-backend/iad-be
+  base_branch: main
+  branch_pattern: "{key}/{slug}"
+  rule_sources: [CLAUDE.md, .cursor/rules/backend.mdc, .cursor/rules/wezeo.mdc,
+                 .cursor/rules/testing.mdc, .cursor/rules/permissions.mdc, .cursor/rules/review.mdc]
+  protected_write_paths: [plugins/w/, plugins/wapi/, plugins/winsyko/, plugins/wintegration/]
+  secret_paths: [.env, .env.ci, auth.json, firebase-credentials.json]
+  verify:
+    - composer test
+    - vendor/bin/pint --dirty --test
+    - for s in deploy/checks/{lang,class,yaml,sms}check.php; do php "$s" "$PWD"; done
+  known_baseline_failures: ["Cannot redeclare function aCatalogueFund()"]
+
+routes:
+  S: [triage, implementer, verify, primary-reviewer, mr-writer]
+  M: [triage, pm-lead, approve-spec, tech-lead, implementer, verify, review, mr-writer, approve-mr]
+  L: [triage, pm-lead, approve-spec, tech-lead, implementer, verify, review, mr-writer, approve-mr]
+  max_fix_rounds: 2
+
+departments:
+  hq:          { name: HQ }
+  product:     { name: Product,     lead: pm-lead }
+  engineering: { name: Engineering, lead: tech-lead }
+  qa:          { name: QA,          lead: qa-lead }
+  release:     { name: Release }
+
+agents:
+  # ---------- HQ (code) ----------
+  - { id: router,      dept: hq,      kind: code, does: "task state machine, worktrees, briefs, budgets, approvals" }
+  - { id: reviewer-picker, dept: qa,  kind: code, does: "path rules -> which specialists run" }
+  - { id: verify,      dept: release, kind: code, does: "runs project.verify, parses failures -> verify.json" }
+  - { id: release,     dept: release, kind: code, does: "push + glab MR after approval" }
+  - { id: ci-poller,   dept: release, kind: code, does: "polls pipeline, hands failing log to ci-summarizer" }
+
+  - id: triage
+    dept: hq
+    kind: worker
+    model: haiku
+    tools: [Read, Grep, Glob, graphify]
+    writes: [triage.json]
+    skip_if: "kind and size set on the task"
+
+  # ---------- Product ----------
+  - id: pm-lead
+    dept: product
+    kind: orchestrator
+    model: { default: sonnet, effort: medium, L: { model: opus, effort: high } }
+    tools: [Read, Grep, Glob, graphify]
+    spawns: [scout, legacy-analyst]
+    writes: [spec.md]
+    output_cap_lines: 120
+    approval: approve-spec
+
+  - id: scout
+    dept: product
+    kind: worker
+    reuses: .claude/agents/ecc-code-explorer.md
+    model: haiku
+    max_parallel: 2
+    tools: [Read, Grep, Glob, graphify]
+    writes: [findings/scout-{n}.md]
+    output_cap_lines: 40
+
+  - id: legacy-analyst
+    dept: product
+    kind: worker
+    model: { default: sonnet, effort: low }
+    trigger: triage.needs_legacy
+    tools: [Read, Grep, Glob, graphify]
+    writes: [findings/legacy.md]
+    output_cap_lines: 40
+
+  # ---------- Engineering ----------
+  - id: tech-lead
+    dept: engineering
+    kind: orchestrator
+    model: { default: opus, effort: medium, L: { effort: high } }
+    tools: [Read, Grep, Glob, graphify]
+    spawns: [implementer, contract-specialist]
+    writes: [plan.md]
+    output_cap_lines: 80
+    fix_rounds: resume_same_implementer
+
+  - id: implementer
+    dept: engineering
+    kind: worker
+    reuses: .claude/agents/wezeo-implementer.md
+    model: { default: sonnet, effort: medium, L: { effort: high } }
+    max_parallel: 3
+    worktree: per_unit
+    tools: [Read, Write, Edit, Bash, Grep, Glob]
+    bash_allow: ["composer test*", "vendor/bin/pint*", "php -l *", "php deploy/checks/*", "git diff*", "git status*"]
+    rule_pack: implementer
+    writes: [impl-{n}.md]
+    output_cap_lines: 40
+
+  - id: contract-specialist
+    dept: engineering
+    kind: worker
+    reuses: .claude/agents/contract-html.md
+    model: { default: sonnet, effort: low }
+    trigger: "triage.kind == contract || plan touches apponboarding/onboarding/views/contracts/"
+    tools: [Read, Write, Edit, Bash, Grep, Glob]
+
+  # ---------- QA ----------
+  - id: primary-reviewer
+    dept: qa
+    kind: worker
+    reuses: [.claude/agents/wezeo-reviewer.md, .claude/agents/ecc-pr-test-analyzer.md]
+    model: { default: sonnet, effort: medium }
+    always: true
+    tools: [Read, Grep, Glob, Bash]
+    rule_pack: reviewer
+    writes: [review/primary.json]
+
+  - id: security-reviewer
+    dept: qa
+    kind: worker
+    reuses: .claude/agents/ecc-security-reviewer.md
+    model: { default: sonnet, effort: medium }
+    trigger_paths: ["**/routes.php", "**/http/requests/**", "**/http/resources/**", "plugins/widentity/permission/**", "**/middleware/**"]
+    tools: [Read, Grep, Glob, Bash]
+    rule_pack: security
+    writes: [review/security.json]
+
+  - id: failure-hunter
+    dept: qa
+    kind: worker
+    reuses: .claude/agents/ecc-silent-failure-hunter.md
+    model: { default: sonnet, effort: low }
+    trigger_paths: ["plugins/appmiddleware/**", "**/*Insyko*", "**/webhook*/**", "**/jobs/**"]
+    trigger_diff_regex: "\\bcatch\\s*\\("
+    tools: [Read, Grep, Glob, Bash]
+    writes: [review/failure.json]
+
+  - id: db-reviewer
+    dept: qa
+    kind: worker
+    reuses: .claude/agents/ecc-database-reviewer.md   # TODO: October/Laravel tweak, drop Supabase advice
+    model: { default: sonnet, effort: low }
+    trigger_paths: ["**/updates/**", "**/models/**", "**/repositories/**"]
+    tools: [Read, Grep, Glob, Bash]
+    writes: [review/db.json]
+
+  - id: qa-lead
+    dept: qa
+    kind: orchestrator
+    model: { default: sonnet, effort: low }
+    trigger: "reviewers_with_findings >= 2"
+    tools: [Read, Grep, Glob]
+    writes: [review.json]
+
+  # ---------- Release ----------
+  - id: mr-writer
+    dept: release
+    kind: worker
+    model: haiku
+    tools: [Read]
+    writes: [mr.md]
+    approval: approve-mr
+
+  - id: ci-summarizer
+    dept: release
+    kind: worker
+    model: haiku
+    trigger: "ci-poller sees failed pipeline"
+    tools: [Read]
+    writes: [ci.json]
+    output_cap_lines: 5
