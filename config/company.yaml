@@ -31,22 +31,24 @@ routes:
   L: [triage, pm-lead, approve-spec, tech-lead, implementer, verify, review, mr-writer, approve-mr]
   max_fix_rounds: 2
 
+# office: room position and color (used for the board colors and the 3D view on the office-3d branch)
 departments:
-  hq:          { name: HQ }
-  product:     { name: Product,     lead: pm-lead }
-  engineering: { name: Engineering, lead: tech-lead }
-  qa:          { name: QA,          lead: qa-lead }
-  release:     { name: Release }
+  hq:          { name: HQ,                           office: { col: 0, row: 0, color: "#ff8a7a" } }
+  product:     { name: Product,     lead: pm-lead,   office: { col: 1, row: 0, color: "#6cb4ee" } }
+  engineering: { name: Engineering, lead: tech-lead, office: { col: 2, row: 0, color: "#5cc9a7" } }
+  qa:          { name: QA,          lead: qa-lead,   office: { col: 0, row: 1, color: "#b39ddb" } }
+  release:     { name: Release,                      office: { col: 1, row: 1, color: "#f6c453" } }
 
 agents:
   # ---------- HQ (code) ----------
-  - { id: router,      dept: hq,      kind: code, does: "task state machine, worktrees, briefs, budgets, approvals" }
-  - { id: reviewer-picker, dept: qa,  kind: code, does: "path rules -> which specialists run" }
-  - { id: verify,      dept: release, kind: code, does: "runs project.verify, parses failures -> verify.json" }
-  - { id: release,     dept: release, kind: code, does: "push + glab MR after approval" }
-  - { id: ci-poller,   dept: release, kind: code, does: "polls pipeline, hands failing log to ci-summarizer" }
+  - { id: router, name: Hub,      dept: hq,      kind: code, does: "task state machine, worktrees, briefs, budgets, approvals" }
+  - { id: reviewer-picker, name: Sorter, dept: qa,  kind: code, does: "path rules -> which specialists run" }
+  - { id: verify, name: Checker,      dept: release, kind: code, does: "runs project.verify, parses failures -> verify.json" }
+  - { id: release, name: Shipper,     dept: release, kind: code, does: "push + glab MR after approval" }
+  - { id: ci-poller, name: Watcher,   dept: release, kind: code, does: "polls pipeline, hands failing log to ci-summarizer" }
 
   - id: triage
+    name: Tia
     dept: hq
     kind: worker
     model: haiku
@@ -56,6 +58,7 @@ agents:
 
   # ---------- Product ----------
   - id: pm-lead
+    name: Paula
     dept: product
     kind: orchestrator
     model: { default: sonnet, effort: medium, L: { model: opus, effort: high } }
@@ -66,6 +69,7 @@ agents:
     approval: approve-spec
 
   - id: scout
+    names: [Sky, Juno]
     dept: product
     kind: worker
     reuses: .claude/agents/ecc-code-explorer.md
@@ -76,6 +80,7 @@ agents:
     output_cap_lines: 40
 
   - id: legacy-analyst
+    name: Lex
     dept: product
     kind: worker
     model: { default: sonnet, effort: low }
@@ -86,6 +91,7 @@ agents:
 
   # ---------- Engineering ----------
   - id: tech-lead
+    name: Theo
     dept: engineering
     kind: orchestrator
     model: { default: opus, effort: medium, L: { effort: high } }
@@ -96,6 +102,7 @@ agents:
     fix_rounds: resume_same_implementer
 
   - id: implementer
+    names: [Ivy, Ola, Pip]
     dept: engineering
     kind: worker
     reuses: .claude/agents/wezeo-implementer.md
@@ -109,6 +116,7 @@ agents:
     output_cap_lines: 40
 
   - id: contract-specialist
+    name: Cora
     dept: engineering
     kind: worker
     reuses: .claude/agents/contract-html.md
@@ -118,6 +126,7 @@ agents:
 
   # ---------- QA ----------
   - id: primary-reviewer
+    name: Rae
     dept: qa
     kind: worker
     reuses: [.claude/agents/wezeo-reviewer.md, .claude/agents/ecc-pr-test-analyzer.md]
@@ -128,6 +137,7 @@ agents:
     writes: [review/primary.json]
 
   - id: security-reviewer
+    name: Sec
     dept: qa
     kind: worker
     reuses: .claude/agents/ecc-security-reviewer.md
@@ -138,6 +148,7 @@ agents:
     writes: [review/security.json]
 
   - id: failure-hunter
+    name: Finn
     dept: qa
     kind: worker
     reuses: .claude/agents/ecc-silent-failure-hunter.md
@@ -148,6 +159,7 @@ agents:
     writes: [review/failure.json]
 
   - id: db-reviewer
+    name: Dee
     dept: qa
     kind: worker
     reuses: .claude/agents/ecc-database-reviewer.md   # TODO: October/Laravel tweak, drop Supabase advice
@@ -157,6 +169,7 @@ agents:
     writes: [review/db.json]
 
   - id: qa-lead
+    name: Quinn
     dept: qa
     kind: orchestrator
     model: { default: sonnet, effort: low }
@@ -166,6 +179,7 @@ agents:
 
   # ---------- Release ----------
   - id: mr-writer
+    name: Mira
     dept: release
     kind: worker
     model: haiku
@@ -174,6 +188,7 @@ agents:
     approval: approve-mr
 
   - id: ci-summarizer
+    name: Cid
     dept: release
     kind: worker
     model: haiku

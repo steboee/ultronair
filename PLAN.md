@@ -1,7 +1,19 @@
 # Ultronair — a mini AI dev company for Wezeo backend work
 
-> Status: discovery & plan (no code yet). First client project: **iad-be**
+> Status: **MVP running** (see README). First client project: **iad-be**
 > (`~/Documents/WORK/WEZEO/Projects/iad-backend/iad-be`).
+
+## 0. What the MVP is (built)
+
+The company works end to end on your machine. You add a task on the board, HQ runs the route for its size, and every LLM desk is a headless Claude Code run (`claude -p`) in the task's own git worktree. It stops for your approval on the spec and the merge request, then commits on the task branch. Tested on a sample repo for S and M tasks; the 3D office view is parked on the `office-3d` branch.
+
+Decisions taken for the MVP, in answer to §11:
+- **Where agents run:** locally, through the Claude Code CLI with your own login. Client code never leaves your machine.
+- **Billing:** whatever Claude Code is logged in with. HQ shows the cost Claude Code reports for each step.
+- **First view:** a plain task board (no 2D or 3D office yet).
+- **Task source:** UI only.
+
+What is not in the MVP yet: triage (you pick the size), scouts and the specialist reviewers, the QA Lead, budget caps, a hook that enforces protected paths (the prompt only asks agents to stay out), GitLab MR creation and CI polling. Those are the next steps of phase 2.
 
 ## 1. What we are building
 
@@ -196,18 +208,18 @@ If agents run under a Claude subscription instead of an API key, the dashboard s
 | **3. Office 3D** | 3D camera, avatars with animations (typing, thinking bubble, waiting = raised hand), animated message particles on lines, timeline replay | Looks like a company |
 | **4. Scale** | Jira/GitLab/Slack, Managed Agents runtime option, scheduled crews (nightly tech-debt, dependency checks), multiple projects | Runs without your laptop open |
 
-## 10. Proposed repo layout
+## 10. Repo layout (as built)
 
 ```
 ultronair/
-  apps/web/            React + r3f office, board, dashboards
-  apps/server/         Fastify, HQ, event bus, SQLite
-  packages/core/       UEvent types, price table, company.yaml schema (zod)
-  packages/runtime-agent-sdk/
-  packages/runtime-managed/   (phase 4)
-  config/company.yaml
-  config/projects/iad-be.yaml
+  agents/*.md          role definitions (Claude Code subagent format); HQ uses them as system prompts
+  config/company.yaml  departments, desks, models, routes, project
+  server/              HQ: pipeline, Claude Code runner, JSON task store, HTTP + SSE
+  web/                 task board (React + Tailwind via Vite middleware)
+  shared/types.ts
 ```
+
+One package and one process (`npm run dev`). The runtime is the `claude` CLI behind `server/runner.ts`, so the Agent SDK or Managed Agents can replace it later without touching the pipeline.
 
 ## 11. Open decisions (need your call)
 
