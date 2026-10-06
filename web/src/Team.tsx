@@ -1,4 +1,4 @@
-import type { BoardState } from '../../shared/types'
+import type { BoardState, KitItem } from '../../shared/types'
 
 export function Team({ s }: { s: BoardState }) {
   return (
@@ -28,6 +28,32 @@ export function Team({ s }: { s: BoardState }) {
           </section>
         ))}
       </div>
+      <Kit s={s} />
     </aside>
+  )
+}
+
+/** What the agents can use: skills, subagents, commands and rules from the project and the kit/ plugin. */
+function Kit({ s }: { s: BoardState }) {
+  const groups: [string, KitItem[]][] = [['Skills', s.kit.skills], ['Agents', s.kit.agents], ['Commands', s.kit.commands], ['Rules', s.kit.rules]]
+  return (
+    <section className="mt-6 border-t border-line pt-3">
+      <h2 className="mb-1 px-1 text-xs font-bold tracking-wider text-muted uppercase">Kit</h2>
+      <p className="mb-2 px-1 text-[11px] text-muted">Every agent can use these. <b>project</b> = from {s.project.id}, <b>kit</b> = this repo's kit/ plugin.</p>
+      {groups.map(([label, items]) => (
+        <details key={label} className="px-1 py-0.5">
+          <summary className="cursor-pointer text-sm font-semibold">{label} <span className="font-normal text-muted tabular-nums">{items.length}</span></summary>
+          <ul className="mt-1 mb-2 space-y-0.5">
+            {items.map((i) => (
+              <li key={i.name} className="flex items-baseline gap-1.5 text-xs" title={i.description}>
+                <span className="truncate font-mono">{i.name}</span>
+                <span className={`ml-auto shrink-0 text-[10px] ${i.source === 'project' ? 'text-run' : 'text-muted'}`}>{i.source}</span>
+              </li>
+            ))}
+            {!items.length && <li className="text-xs text-muted">{label === 'Rules' ? 'None found. Run npm run kit:import.' : 'None'}</li>}
+          </ul>
+        </details>
+      ))}
+    </section>
   )
 }

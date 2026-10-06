@@ -1,14 +1,19 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import path from 'node:path'
-import { RUNTIME } from './config'
+import type { Tokens } from '../shared/types'
+import { KIT_DIR, RUNTIME } from './config'
 
 export interface AgentRun {
   /** text the agent ended with (its report) */
   text: string
   costUsd: number
+  tokens: Tokens
   ok: boolean
   error?: string
+  /** how many skills / agents Claude Code loaded for this run */
+  loaded?: { skills: number; agents: number }
 }
+const NO_TOKENS: Tokens = { input: 0, cacheWrite: 0, cacheRead: 0, output: 0 }
 
 export interface RunOptions {
   cwd: string
@@ -21,6 +26,8 @@ export interface RunOptions {
   /** acceptEdits for agents that change code; default otherwise */
   permissionMode: 'default' | 'acceptEdits'
   onActivity: (text: string) => void
+  /** Claude Code's rate_limit_info (plan limits), once per run */
+  onRateLimit?: (info: unknown) => void
   signal: AbortSignal
   /** what the mock runtime should answer with */
   mock?: () => string
@@ -54,6 +61,7 @@ export function runAgent(o: RunOptions): Promise<AgentRun> {
     '--append-system-prompt', o.systemPrompt,
     '--permission-mode', o.permissionMode,
     '--no-session-persistence',
+    '--plugin-dir', KIT_DIR,
     '--allowedTools', ...o.allowedTools,
   ]
   if (o.model) args.push('--model', o.model)
@@ -64,12 +72,13 @@ export function runAgent(o: RunOptions): Promise<AgentRun> {
     try {
       child = spawn(process.env.CLAUDE_BIN ?? 'claude', args, { cwd: o.cwd, stdio: ['ignore', 'pipe', 'pipe'], env: process.env })
     } catch (e) {
-      return resolve({ text: '', costUsd: 0, ok: false, error: `Could not start Claude Code: ${(e as Error).message}` })
+      return resolve({ text: '', costUsd: 0, tokens: NO_TOKENS, ok: false, error: `Could not start Claude Code: ${(e as Error).message}` })
     }
     const kill = () => child.kill('SIGTERM')
     o.signal.addEventListener('abort', kill, { once: true })
     let buf = '', lastText = '', stderr = ''
     let result: AgentRun | undefined
+    let loaded: AgentRun['loaded']
 
     child.stdout!.on('data', (chunk: Buffer) => {
       buf += chunk.toString()
@@ -80,23 +89,30 @@ export function runAgent(o: RunOptions): Promise<AgentRun> {
         if (!line) continue
         let m: any
         try { m = JSON.parse(line) } catch { continue }
-        if (m.type === 'assistant' && m.parent_tool_use_id == null) {
+        if (m.type === 'system' && m.subtype === 'init') loaded = { skills: m.skills?.length ?? 0, agents: m.agents?.length ?? 0 }
+        else if (m.type === 'rate_limit_event') o.onRateLimit?.(m.rate_limit_info)
+        else if (m.type === 'assistant' && m.parent_tool_use_id == null) {
           for (const b of m.message?.content ?? []) {
             if (b.type === 'tool_use') o.onActivity(describeTool(b.name, b.input ?? {}))
             if (b.type === 'text' && b.text?.trim()) lastText = b.text
           }
         } else if (m.type === 'result') {
           const text = typeof m.result === 'string' ? m.result : lastText
-          result = { text, costUsd: Number(m.total_cost_usd ?? 0), ok: !m.is_error && m.subtype === 'success', error: m.is_error ? `Claude Code ended with: ${m.subtype ?? 'error'}` : undefined }
+          const u = m.usage ?? {}
+          result = {
+            text, costUsd: Number(m.total_cost_usd ?? 0), loaded,
+            tokens: { input: u.input_tokens ?? 0, cacheWrite: u.cache_creation_input_tokens ?? 0, cacheRead: u.cache_read_input_tokens ?? 0, output: u.output_tokens ?? 0 },
+            ok: !m.is_error && m.subtype === 'success', error: m.is_error ? `Claude Code ended with: ${m.subtype ?? 'error'}` : undefined,
+          }
         }
       }
     })
     child.stderr!.on('data', (c: Buffer) => { stderr = (stderr + c.toString()).slice(-2000) })
-    child.on('error', (e) => resolve({ text: '', costUsd: 0, ok: false, error: `Could not start Claude Code (${e.message}). Is \`claude\` on your PATH?` }))
+    child.on('error', (e) => resolve({ text: '', costUsd: 0, tokens: NO_TOKENS, ok: false, error: `Could not start Claude Code (${e.message}). Is \`claude\` on your PATH?` }))
     child.on('close', (code) => {
       o.signal.removeEventListener('abort', kill)
-      if (o.signal.aborted) return resolve({ text: lastText, costUsd: result?.costUsd ?? 0, ok: false, error: 'Cancelled' })
-      resolve(result ?? { text: lastText, costUsd: 0, ok: false, error: `Claude Code exited with code ${code}. ${stderr.trim().split('\n').pop() ?? ''}` })
+      if (o.signal.aborted) return resolve({ text: lastText, costUsd: result?.costUsd ?? 0, tokens: result?.tokens ?? NO_TOKENS, ok: false, error: 'Cancelled' })
+      resolve(result ?? { text: lastText, costUsd: 0, tokens: NO_TOKENS, ok: false, error: `Claude Code exited with code ${code}. ${stderr.trim().split('\n').pop() ?? ''}` })
     })
   })
 }
@@ -111,8 +127,9 @@ async function runMock(o: RunOptions): Promise<AgentRun> {
   const acts = ['Searching for "Onboarding"', 'Read OnboardingService.php', 'Read routes.php', 'Edit QuestionnaireResume.php', 'Running composer test']
   try {
     for (let i = 0; i < 3; i++) { o.onActivity(acts[Math.floor(Math.random() * acts.length)]); await sleep(1200 + Math.random() * 1500, o.signal) }
-  } catch { return { text: '', costUsd: 0, ok: false, error: 'Cancelled' } }
-  return { text: o.mock?.() ?? 'Done.', costUsd: 0, ok: true }
+  } catch { return { text: '', costUsd: 0, tokens: NO_TOKENS, ok: false, error: 'Cancelled' } }
+  const out = Math.round(300 + Math.random() * 1500)
+  return { text: o.mock?.() ?? 'Done.', costUsd: 0, ok: true, tokens: { input: 40, cacheWrite: 2000, cacheRead: 30000 + out * 10, output: out } }
 }
 
 /** Run a shell command (verify, git). Never throws; returns exit code and tail of output. */

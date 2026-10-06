@@ -27,6 +27,7 @@ export const api = {
   create: (t: NewTask) => post('/api/tasks', t),
   approve: (key: string) => post(`/api/tasks/${k(key)}/approve`),
   changes: (key: string, feedback: string) => post(`/api/tasks/${k(key)}/changes`, { feedback }),
+  followup: (key: string, question: string) => post(`/api/tasks/${k(key)}/followup`, { question }),
   retry: (key: string) => post(`/api/tasks/${k(key)}/retry`),
   cancel: (key: string) => post(`/api/tasks/${k(key)}/cancel`),
   remove: (key: string) => call(`/api/tasks/${k(key)}`, { method: 'DELETE' }),

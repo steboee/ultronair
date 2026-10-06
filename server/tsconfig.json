@@ -3,5 +3,5 @@
     "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler", "strict": true,
     "noEmit": true, "skipLibCheck": true, "types": ["node"], "allowImportingTsExtensions": false
   },
-  "include": [".", "../shared"]
+  "include": [".", "../shared", "../scripts"]
 }

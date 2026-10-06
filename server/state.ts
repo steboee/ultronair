@@ -1,10 +1,23 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import type { AgentView, BoardState, LogLine, Task } from '../shared/types'
+import type { AgentView, BoardState, LogLine, Task, Usage } from '../shared/types'
 import { DATA_DIR, DEPTS, DESKS, PROJECT, RUNTIME, projectExists } from './config'
+import { scanKit } from './kit'
 
 const FILE = path.join(DATA_DIR, 'tasks.json')
+const USAGE_FILE = path.join(DATA_DIR, 'usage.json')
 mkdirSync(DATA_DIR, { recursive: true })
+
+/** Plan limits as Claude Code last reported them (it reports them at the start of every run). */
+export let usage: Usage = existsSync(USAGE_FILE) ? JSON.parse(readFileSync(USAGE_FILE, 'utf8')) : {}
+export function setUsage(info: any) {
+  const w = info?.unifiedWindows
+  if (!w) return
+  const win = (x: any) => (x && typeof x.utilization === 'number' ? { pct: Math.round(x.utilization * 1000) / 10, resetsAt: x.resetsAt * 1000 } : undefined)
+  usage = { fiveHour: win(w.five_hour) ?? usage.fiveHour, sevenDay: win(w.seven_day) ?? usage.sevenDay, updatedAt: Date.now() }
+  writeFileSync(USAGE_FILE, JSON.stringify(usage))
+  changed()
+}
 
 export const tasks = new Map<string, Task>()
 export const agents = new Map<string, AgentView>(
@@ -19,6 +32,7 @@ if (existsSync(FILE)) {
       t.error = 'Interrupted: HQ was restarted. Press Retry to continue from this step.'
       t.agentId = undefined; t.activity = undefined
     }
+    t.tokens ??= { input: 0, cacheWrite: 0, cacheRead: 0, output: 0 }
     tasks.set(t.key, t)
   }
 }
@@ -34,6 +48,8 @@ export function snapshot(): BoardState {
     departments: DEPTS,
     agents: [...agents.values()],
     tasks: [...tasks.values()].sort((a, b) => b.createdAt - a.createdAt),
+    usage,
+    kit: scanKit(),
   }
 }
 

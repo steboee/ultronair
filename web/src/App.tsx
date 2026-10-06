@@ -5,6 +5,7 @@ import { NewTask } from './NewTask'
 import { TaskPanel } from './TaskPanel'
 import { Team } from './Team'
 import { Button } from './ui'
+import { Meter } from './Meter'
 
 export default function App() {
   const { state: s, online } = useBoard()
@@ -26,6 +27,7 @@ export default function App() {
         {!s.project.exists && <span className="rounded bg-bad/10 px-2 py-0.5 text-xs font-semibold text-bad">Project repo not found: set PROJECT_PATH</span>}
         {s.runtime === 'mock' && <span className="rounded bg-wait/15 px-2 py-0.5 text-xs font-semibold text-wait">Mock mode: no Claude calls</span>}
         <span className="text-sm text-muted tabular-nums">{working} working</span>
+        <Meter u={s.usage} />
         {waiting > 0 && <span className="rounded-full bg-ceo px-2 py-0.5 text-xs font-bold text-white">{waiting} need{waiting === 1 ? 's' : ''} you</span>}
         <Button kind="primary" className="ml-auto" onClick={() => setModal(true)}>New task</Button>
       </header>
@@ -36,7 +38,7 @@ export default function App() {
             <div className="grid h-full place-items-center">
               <div className="max-w-sm text-center">
                 <p className="text-lg font-bold">The office is quiet.</p>
-                <p className="mt-1 text-sm text-muted">Give the company its first task. It will move across the board as each desk finishes, and stop for your approval on the spec and the merge request.</p>
+                <p className="mt-1 text-sm text-muted">Ask a question about the code or give the company a change to make. Questions get an answer from an Analyst; changes move across the board and stop for your approval on the spec and the merge request.</p>
                 <Button kind="primary" className="mt-4" onClick={() => setModal(true)}>New task</Button>
               </div>
             </div>

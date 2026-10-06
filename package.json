@@ -8,7 +8,8 @@
     "dev": "tsx watch --clear-screen=false server/index.ts",
     "start": "tsx server/index.ts",
     "mock": "ULTRONAIR_RUNTIME=mock tsx server/index.ts",
-    "typecheck": "tsc --noEmit -p server && tsc --noEmit -p web"
+    "typecheck": "tsc --noEmit -p server && tsc --noEmit -p web",
+    "kit:import": "tsx scripts/kit-import.ts"
   },
   "dependencies": {
     "react": "^19.3.0",

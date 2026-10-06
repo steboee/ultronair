@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { COLUMN_LABEL, type BoardState } from '../../shared/types'
 import { api } from './api'
-import { Button, StatusPill, ago, usd } from './ui'
+import { Button, StatusPill, ago, tok, tokDetail } from './ui'
 
 export function TaskPanel({ s, taskKey, onClose }: { s: BoardState; taskKey: string; onClose: () => void }) {
   const t = s.tasks.find((x) => x.key === taskKey)
   const [tab, setTab] = useState<string>('')
   const [content, setContent] = useState('')
   const [feedback, setFeedback] = useState('')
+  const [follow, setFollow] = useState('')
   const [error, setError] = useState('')
 
   // show the document under approval first, otherwise the newest handoff file
@@ -17,7 +18,7 @@ export function TaskPanel({ s, taskKey, onClose }: { s: BoardState; taskKey: str
     if (!t || !fileTab || fileTab === 'log') return
     api.file(t.key, fileTab).then(setContent, () => setContent(''))
   }, [t?.key, fileTab, fileStamp]) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { setTab(''); setFeedback(''); setError('') }, [taskKey])
+  useEffect(() => { setTab(''); setFeedback(''); setFollow(''); setError('') }, [taskKey])
   if (!t) return null
 
   const act = (f: () => Promise<unknown>) => f().then(() => setError(''), (e: Error) => setError(e.message))
@@ -28,7 +29,7 @@ export function TaskPanel({ s, taskKey, onClose }: { s: BoardState; taskKey: str
       <header className="border-b border-line p-4">
         <div className="flex items-center gap-2">
           <span className="font-mono text-xs text-muted">{t.key}</span>
-          <span className="rounded bg-ground px-1 font-mono text-[10px] text-muted">{t.size}</span>
+          <span className="rounded bg-ground px-1 font-mono text-[10px] text-muted">{t.kind === 'question' ? 'Question' : t.kind ? `${t.size} change` : 'Triage'}</span>
           <StatusPill status={t.status} />
           <span className="text-xs text-muted">{COLUMN_LABEL[t.column]}</span>
           <button onClick={onClose} className="ml-auto rounded px-2 text-muted hover:bg-ground" aria-label="Close">✕</button>
@@ -38,7 +39,8 @@ export function TaskPanel({ s, taskKey, onClose }: { s: BoardState; taskKey: str
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted">
           {t.branch && <span>branch {t.branch}</span>}
           {t.fixRound > 0 && <span>fix rounds {t.fixRound}</span>}
-          {t.costUsd > 0 && <span>cost {usd(t.costUsd)}</span>}
+          {tok(t.tokens) && <span title={tokDetail(t.tokens)}>{tok(t.tokens)} ({tokDetail(t.tokens)})</span>}
+          {t.session && <span title="Your 5-hour session meter when this task's first agent started and at its latest agent run. Other work in the same window counts too.">session {t.session.start}% → {t.session.end}%</span>}
         </div>
       </header>
 
@@ -63,6 +65,15 @@ export function TaskPanel({ s, taskKey, onClose }: { s: BoardState; taskKey: str
             <Button className="mt-2" kind="primary" onClick={() => act(() => api.retry(t.key))}>Retry from this step</Button>
           </section>
         )}
+        {t.kind === 'question' && t.status === 'done' && (
+          <section className="m-4 rounded-xl bg-ground p-3">
+            <label className="block text-sm font-bold" htmlFor="fu">Ask a follow-up</label>
+            <p className="mt-0.5 text-xs text-muted">The Analyst answers with this whole thread as context.</p>
+            <textarea id="fu" rows={2} value={follow} onChange={(e) => setFollow(e.target.value)} placeholder="And what happens if KYC fails?"
+              className="mt-2 w-full rounded-lg bg-paper p-2 text-sm ring-1 ring-line outline-none focus:ring-ink" />
+            <Button kind="primary" className="mt-1" disabled={!follow.trim()} onClick={() => act(() => api.followup(t.key, follow).then(() => { setFollow(''); setTab('answer.md') }))}>Ask</Button>
+          </section>
+        )}
         {error && <p className="mx-4 mt-2 text-sm font-semibold text-bad">{error}</p>}
 
         <section className="px-4 pt-3">
@@ -74,7 +85,7 @@ export function TaskPanel({ s, taskKey, onClose }: { s: BoardState; taskKey: str
                 <span className="font-semibold">{st.agentName ?? 'HQ'}</span>
                 <span className="text-muted">{st.name}</span>
                 {st.note && <span className="truncate text-xs text-muted">· {st.note}</span>}
-                <span className="ml-auto font-mono text-[11px] text-muted">{st.endedAt ? `${Math.round((st.endedAt - st.startedAt) / 1000)}s` : 'now'}{st.costUsd ? ` · ${usd(st.costUsd)}` : ''}</span>
+                <span className="ml-auto font-mono text-[11px] text-muted" title={tokDetail(st.tokens)}>{st.endedAt ? `${Math.round((st.endedAt - st.startedAt) / 1000)}s` : 'now'}{tok(st.tokens) ? ` · ${tok(st.tokens)}` : ''}</span>
               </li>
             ))}
             {!t.steps.length && <li className="text-sm text-muted">Not started yet.</li>}

@@ -1,0 +1,7 @@
+{
+  "name": "ultronair",
+  "version": "0.2.0",
+  "description": "Ultronair's desks (role agents), ECC review/planning agents and PHP/Laravel skills, plus the Wezeo skills and rules imported from the client project.",
+  "author": { "name": "Ultronair" },
+  "license": "MIT"
+}
