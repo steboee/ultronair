@@ -7,6 +7,8 @@ import type { Dept, Size } from '../shared/types'
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 export const DATA_DIR = path.join(ROOT, '.ultronair')
+/** Claude Code plugin with our agents, ECC and imported Wezeo skills; loaded into every run */
+export const KIT_DIR = path.join(ROOT, 'kit')
 
 interface RawAgent {
   id: string
@@ -18,6 +20,9 @@ interface RawAgent {
   max_parallel?: number
   tools?: string[]
   bash_allow?: string[]
+  reuses?: string | string[]
+  rule_pack?: string
+  spawns?: string[]
 }
 interface RawConfig {
   models: Record<string, { id: string }>
@@ -30,8 +35,9 @@ interface RawConfig {
     secret_paths?: string[]
     verify: string[]
     known_baseline_failures?: string[]
+    rule_packs?: Record<string, string[]>
   }
-  routes: Record<Size, string[]> & { max_fix_rounds: number }
+  routes: Record<Size | 'Q', string[]> & { max_fix_rounds: number }
   departments: Record<string, { name: string; office?: { color: string } }>
   agents: RawAgent[]
 }
@@ -47,9 +53,10 @@ export const PROJECT = {
   known_baseline_failures: raw.project.known_baseline_failures ?? [],
   protected_write_paths: raw.project.protected_write_paths ?? [],
   secret_paths: raw.project.secret_paths ?? [],
+  rule_packs: raw.project.rule_packs ?? {},
 }
 export const projectExists = () => existsSync(path.join(PROJECT.path, '.git'))
-export const ROUTES = raw.routes
+export const ROUTES = { ...raw.routes, Q: raw.routes.Q ?? ['analyst'] }
 export const RUNTIME: 'claude' | 'mock' = process.env.ULTRONAIR_RUNTIME === 'mock' ? 'mock' : 'claude'
 
 const PALETTE = ['#ff8a7a', '#6cb4ee', '#5cc9a7', '#b39ddb', '#f6c453', '#ef8fb3']
@@ -64,6 +71,11 @@ export interface Desk {
   kind: RawAgent['kind']
   tools: string[]
   bashAllow: string[]
+  /** agent files from the project's .claude/agents (or kit/agents) merged into this desk's prompt */
+  reuses: string[]
+  rulePack?: string
+  /** may delegate to these subagents with the Task tool */
+  spawns: string[]
   /** model alias (opus/sonnet/haiku) per task size */
   modelFor: (size: Size) => { id?: string; alias?: string; effort?: string }
 }
@@ -87,8 +99,12 @@ export const DESKS: Desk[] = raw.agents.flatMap((a) => {
     role: nice(a.id),
     dept: a.dept,
     kind: a.kind,
-    tools: (a.tools ?? []).filter((t) => /^[A-Z]/.test(t)), // drop MCP-ish names like "graphify"
+    // lowercase names are MCP servers (e.g. graphify → mcp__graphify)
+    tools: (a.tools ?? []).map((t) => (/^[A-Z]/.test(t) ? t : `mcp__${t}`)),
     bashAllow: a.bash_allow ?? [],
+    reuses: a.reuses ? [a.reuses].flat() : [],
+    rulePack: a.rule_pack,
+    spawns: a.spawns ?? [],
     modelFor,
   }))
 })

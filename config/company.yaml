@@ -17,6 +17,14 @@ project:
   branch_pattern: "{key}/{slug}"
   rule_sources: [CLAUDE.md, .cursor/rules/backend.mdc, .cursor/rules/wezeo.mdc,
                  .cursor/rules/testing.mdc, .cursor/rules/permissions.mdc, .cursor/rules/review.mdc]
+  # rule packs: which .cursor rules each desk gets in its system prompt (`rule_pack:` on the agent).
+  # Read from the project checkout, falling back to kit/rules/ (npm run kit:import). CLAUDE.md is loaded by Claude Code itself.
+  rule_packs:
+    planner:     [.cursor/rules/backend.mdc, .cursor/rules/wezeo.mdc]
+    implementer: [.cursor/rules/backend.mdc, .cursor/rules/wezeo.mdc, .cursor/rules/testing.mdc, .cursor/rules/permissions.mdc]
+    reviewer:    [.cursor/rules/review.mdc, .cursor/rules/backend.mdc, .cursor/rules/testing.mdc]
+    security:    [.cursor/rules/permissions.mdc, .cursor/rules/review.mdc]
+    analyst:     [.cursor/rules/wezeo.mdc, .cursor/rules/iad-workflow.mdc]
   protected_write_paths: [plugins/w/, plugins/wapi/, plugins/winsyko/, plugins/wintegration/]
   secret_paths: [.env, .env.ci, auth.json, firebase-credentials.json]
   verify:
@@ -25,7 +33,10 @@ project:
     - for s in deploy/checks/{lang,class,yaml,sms}check.php; do php "$s" "$PWD"; done
   known_baseline_failures: ["Cannot redeclare function aCatalogueFund()"]
 
+# Q = a question: someone reads the code and answers; nothing is changed, no worktree, no review.
+# Tasks created as "Let HQ decide" go through triage first, which picks Q or S/M/L.
 routes:
+  Q: [analyst]
   S: [triage, implementer, verify, primary-reviewer, mr-writer]
   M: [triage, pm-lead, approve-spec, tech-lead, implementer, verify, review, mr-writer, approve-mr]
   L: [triage, pm-lead, approve-spec, tech-lead, implementer, verify, review, mr-writer, approve-mr]
@@ -57,6 +68,17 @@ agents:
     skip_if: "kind and size set on the task"
 
   # ---------- Product ----------
+  - id: analyst
+    names: [Ana, Oli]
+    dept: product
+    kind: worker
+    reuses: .claude/agents/ecc-code-explorer.md
+    model: { default: sonnet, effort: medium }
+    max_parallel: 2
+    tools: [Read, Grep, Glob, graphify]
+    rule_pack: analyst
+    writes: [answer.md]
+
   - id: pm-lead
     name: Paula
     dept: product
@@ -64,6 +86,7 @@ agents:
     model: { default: sonnet, effort: medium, L: { model: opus, effort: high } }
     tools: [Read, Grep, Glob, graphify]
     spawns: [scout, legacy-analyst]
+    rule_pack: planner
     writes: [spec.md]
     output_cap_lines: 120
     approval: approve-spec
@@ -94,9 +117,11 @@ agents:
     name: Theo
     dept: engineering
     kind: orchestrator
+    reuses: .claude/agents/ecc-planner.md
     model: { default: opus, effort: medium, L: { effort: high } }
     tools: [Read, Grep, Glob, graphify]
     spawns: [implementer, contract-specialist]
+    rule_pack: planner
     writes: [plan.md]
     output_cap_lines: 80
     fix_rounds: resume_same_implementer

@@ -13,7 +13,20 @@ Decisions taken for the MVP, in answer to §11:
 - **First view:** a plain task board (no 2D or 3D office yet).
 - **Task source:** UI only.
 
-What is not in the MVP yet: triage (you pick the size), scouts and the specialist reviewers, the QA Lead, budget caps, a hook that enforces protected paths (the prompt only asks agents to stay out), GitLab MR creation and CI polling. Those are the next steps of phase 2.
+Since then:
+- **Questions:** a Q route sends questions to an Analyst. Nothing is changed and there is no review or MR. Follow-ups continue the thread.
+- **Triage:** triage runs for "Let HQ decide" tasks and picks Q, S, M or L.
+- **No-diff shortcut:** change tasks that end with no diff skip verify, review and the MR.
+- **Kit:** `kit/` is a Claude Code plugin with the desks, ECC agents and skills, and imported Wezeo skills and rules. Desks get `reuses:` playbooks and `.cursor` rule packs.
+- **Usage:** the board shows tokens and the plan's session and weekly limits instead of dollars.
+
+Not built yet:
+- scouts as separate desks (orchestrators can delegate to them as subagents)
+- the specialist reviewers and the QA Lead
+- budget caps
+- a hook that enforces protected paths (agents are only told by prompt)
+- GitLab MR creation and CI polling
+- distilled rule packs (the full `.mdc` files are injected today; see token-strategy.md)
 
 ## 1. What we are building
 
@@ -212,7 +225,7 @@ If agents run under a Claude subscription instead of an API key, the dashboard s
 
 ```
 ultronair/
-  agents/*.md          role definitions (Claude Code subagent format); HQ uses them as system prompts
+  kit/                 Claude Code plugin: desks (agents/), ecc-* agents, skills, imported rules/commands
   config/company.yaml  departments, desks, models, routes, project
   server/              HQ: pipeline, Claude Code runner, JSON task store, HTTP + SSE
   web/                 task board (React + Tailwind via Vite middleware)

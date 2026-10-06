@@ -1,5 +1,5 @@
 import { COLUMNS, COLUMN_LABEL, type BoardState } from '../../shared/types'
-import { StatusPill, usd } from './ui'
+import { StatusPill, tok } from './ui'
 
 export function Board({ s, selected, onSelect }: { s: BoardState; selected?: string; onSelect: (k: string) => void }) {
   const agent = (id?: string) => s.agents.find((a) => a.id === id)
@@ -21,7 +21,9 @@ export function Board({ s, selected, onSelect }: { s: BoardState; selected?: str
                     className={`block w-full rounded-lg bg-paper p-3 text-left shadow-sm ring-1 transition hover:ring-muted ${selected === t.key ? 'ring-2 ring-ink' : t.status === 'waiting' ? 'ring-ceo' : t.status === 'failed' ? 'ring-bad/60' : 'ring-line'}`}>
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-[11px] font-medium text-muted">{t.key}</span>
-                      <span className="rounded bg-ground px-1 font-mono text-[10px] text-muted">{t.size}</span>
+                      <span className="rounded bg-ground px-1 font-mono text-[10px] text-muted" title={t.kind === 'question' ? 'Question' : t.kind ? `${t.size} change` : 'Triage is deciding'}>
+                        {t.kind === 'question' ? 'Q' : t.kind ? t.size : '?'}
+                      </span>
                       <span className="ml-auto"><StatusPill status={t.status} /></span>
                     </div>
                     <div className="mt-1 text-sm leading-snug font-semibold">{t.title}</div>
@@ -32,7 +34,8 @@ export function Board({ s, selected, onSelect }: { s: BoardState; selected?: str
                     )}
                     {t.status === 'waiting' && <div className="mt-2 text-xs font-semibold text-wait">Waiting for your approval</div>}
                     {t.status === 'failed' && <div className="mt-2 line-clamp-2 text-xs text-bad">{t.error}</div>}
-                    {t.costUsd > 0 && <div className="mt-1 text-right font-mono text-[10px] text-muted">{usd(t.costUsd)}</div>}
+                    {t.status === 'done' && t.kind === 'question' && <div className="mt-2 text-xs font-semibold text-ok">Answered</div>}
+                    {tok(t.tokens) && <div className="mt-1 text-right font-mono text-[10px] text-muted">{tok(t.tokens)}</div>}
                   </button>
                 )
               })}

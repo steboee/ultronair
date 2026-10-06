@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import path from 'node:path'
 import type { NewTask } from '../shared/types'
 import { PROJECT, ROOT, RUNTIME, projectExists } from './config'
-import { approve, cancel, createTask, removeTask, requestChanges, retry } from './pipeline'
+import { approve, cancel, createTask, followUp, removeTask, requestChanges, retry } from './pipeline'
 import { readHandoff, snapshot, subscribe } from './state'
 
 const PORT = Number(process.env.PORT ?? 4400)
@@ -33,10 +33,11 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise
     if (req.method === 'POST' && p === '/api/tasks') {
       const n = await body<NewTask>(req)
       if (!n.title?.trim()) return json(res, 400, { error: 'Give the task a title.' }), true
-      if (!['S', 'M', 'L'].includes(n.size)) return json(res, 400, { error: 'Size must be S, M or L.' }), true
+      if (n.size && !['S', 'M', 'L'].includes(n.size)) return json(res, 400, { error: 'Size must be S, M or L.' }), true
+      if (n.kind && !['question', 'change'].includes(n.kind)) return json(res, 400, { error: 'Kind must be question or change.' }), true
       return json(res, 201, createTask(n)), true
     }
-    const m = p.match(/^\/api\/tasks\/([^/]+)\/(approve|changes|retry|cancel|file)(?:\/(.+))?$/)
+    const m = p.match(/^\/api\/tasks\/([^/]+)\/(approve|changes|followup|retry|cancel|file)(?:\/(.+))?$/)
     if (m) {
       const key = decodeURIComponent(m[1])
       switch (m[2]) {
@@ -45,6 +46,11 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise
           const { feedback } = await body<{ feedback: string }>(req)
           if (!feedback?.trim()) return json(res, 400, { error: 'Say what should change.' }), true
           requestChanges(key, feedback.trim()); break
+        }
+        case 'followup': {
+          const { question } = await body<{ question: string }>(req)
+          if (!question?.trim()) return json(res, 400, { error: 'Type your follow-up question.' }), true
+          followUp(key, question.trim()); break
         }
         case 'retry': retry(key); break
         case 'cancel': cancel(key); break
