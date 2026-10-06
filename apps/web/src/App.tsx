@@ -1,72 +1,51 @@
-import { useEffect, useReducer, useRef, useState } from 'react'
-import { PROJECT } from './company'
-import { init, reduce } from './state'
-import { SimRuntime } from './sim'
-import type { Runtime } from './types'
-import { Office } from './components/Office'
-import { Detail, Gates, NewTaskForm, Spend } from './components/Panels'
-import { Board, Log } from './components/Lower'
+import { useEffect, useMemo, useState } from 'react'
+import { createSource } from './events/source'
+import { useOffice } from './store/office'
+import { OfficeCanvas } from './ui/OfficeCanvas'
+import { Sidebar } from './ui/Sidebar'
+import { AgentPanel } from './ui/AgentPanel'
+import { Ticker } from './ui/Ticker'
+import { NewTaskModal } from './ui/NewTaskModal'
 
 export default function App() {
-  const [s, dispatch] = useReducer(reduce, undefined, init)
-  const rt = useRef<Runtime | null>(null)
-  const speed = useRef(2)
-  const [spd, setSpd] = useState(2)
-  const [paused, setPaused] = useState(false)
-  const [auto, setAuto] = useState(false)
-  const [sel, setSel] = useState('ceo')
+  const source = useMemo(() => createSource(), [])
+  const [modal, setModal] = useState(false)
+  const connected = useOffice((s) => s.connected)
+  const working = useOffice((s) => Object.values(s.agents).filter((a) => a.status !== 'idle').length)
+  const total = useOffice((s) => Object.keys(s.agents).length)
+  const focusRoom = useOffice((s) => s.focusRoom)
 
   useEffect(() => {
-    const r = new SimRuntime((e) => {
-      dispatch(e)
-      if (e.t === 'agent.message') setTimeout(() => dispatch({ t: 'arrow.expire', id: e.id }), 1800 / speed.current)
-    })
-    rt.current = r
-    dispatch({ t: 'log', text: 'office open. Hand a task to HQ to watch the company work.' })
-    r.submit({ key: 'PM-3598', title: 'Add resume-later link to onboarding step 3', desc: '', size: 'M' })
-    return () => r.stop()
-  }, [])
+    const { apply, setConnected } = useOffice.getState()
+    return source.connect(apply, setConnected)
+  }, [source])
 
   return (
-    <div className="wrap">
-      <header>
-        <h1>Ultronair<small>Wezeo AI dev company · project {PROJECT}</small></h1>
-        <div className="ctl">
-          <label htmlFor="speed" style={{ margin: 0 }}>Speed</label>
-          <select id="speed" style={{ width: 'auto' }} value={spd} onChange={(e) => { const v = +e.target.value; setSpd(v); speed.current = v; rt.current?.setSpeed(v) }}>
-            {[1, 2, 4, 8].map((v) => <option key={v} value={v}>{v}×</option>)}
-          </select>
-          <label className="inline"><input type="checkbox" checked={auto} onChange={(e) => { setAuto(e.target.checked); rt.current?.setAuto(e.target.checked) }} /> auto-approve gates</label>
-          <button className="btn" onClick={() => { rt.current?.setPaused(!paused); setPaused(!paused) }}>{paused ? 'Resume' : 'Pause'}</button>
-        </div>
+    <div className="flex h-full flex-col">
+      <header className="flex h-14 shrink-0 items-center gap-4 border-b border-line bg-paper px-4">
+        <h1 className="text-xl font-black tracking-tight">Ultronair <span className="font-bold text-muted">Office</span></h1>
+        <span className="flex items-center gap-1.5 text-sm font-semibold text-muted">
+          <span className={`h-2 w-2 rounded-full ${connected ? 'bg-done' : 'bg-blocked'}`} />
+          {import.meta.env.VITE_EVENTS_URL ? (connected ? 'Live' : 'Reconnecting…') : 'Mock data'}
+        </span>
+        <span className="text-sm font-semibold text-muted tabular-nums">{working} of {total} agents busy</span>
+        {source.setSpeed && (
+          <label className="flex items-center gap-1.5 text-sm font-semibold text-muted">Speed
+            <select id="speed" className="rounded-lg border border-line bg-white px-1.5 py-0.5" defaultValue="1" onChange={(e) => source.setSpeed?.(+e.target.value)}>
+              {[0.5, 1, 2, 4].map((v) => <option key={v} value={v}>{v}×</option>)}
+            </select>
+          </label>
+        )}
+        <button onClick={() => focusRoom(undefined)} className="ml-auto rounded-xl px-3 py-1.5 text-sm font-bold hover:bg-sand">Fit view</button>
+        <button onClick={() => setModal(true)} className="rounded-xl bg-ink px-4 py-1.5 text-sm font-bold text-white hover:bg-ink/90">New task</button>
       </header>
-      <div className="banner">Simulated agents. The office, models, roles and prices are read from config/company.yaml; activity and token counts are scripted until the real runtime is connected.</div>
-
-      <div className="main">
-        <section>
-          <Office agents={s.agents} arrows={s.arrows} pending={s.gates.length} selected={sel} onSelect={setSel} />
-          <div className="legend">
-            {[['idle', '--line'], ['thinking', '--think'], ['tool', '--tool'], ['waiting', '--warn'], ['blocked', '--bad'], ['done', '--ok']].map(([k, v]) => (
-              <span key={k} style={{ ['--c' as string]: `var(${v})` }}><i />{k}</span>
-            ))}
-            <span>robot desk = HQ code, 0 tokens</span>
-          </div>
-        </section>
-        <aside className="side">
-          <div className="panel"><h2>Inspector <span>click a desk</span></h2><Detail id={sel} s={s} /></div>
-          <div className="panel">
-            <h2>CEO desk <span>you</span></h2>
-            <Gates gates={s.gates} onApprove={(id) => rt.current?.approve(id)} />
-            <NewTaskForm onSubmit={(t) => rt.current?.submit(t)} />
-          </div>
-          <div className="panel"><h2>Spend <span>list price</span></h2><Spend s={s} /></div>
-        </aside>
+      <div className="flex min-h-0 flex-1">
+        <Sidebar />
+        <main className="min-w-0 flex-1"><OfficeCanvas /></main>
+        <AgentPanel />
       </div>
-
-      <div className="lower">
-        <div className="panel"><h2>Task board</h2><Board s={s} /></div>
-        <div className="panel"><h2>Event log <span>newest first</span></h2><Log s={s} /></div>
-      </div>
+      <Ticker />
+      {modal && <NewTaskModal onClose={() => setModal(false)} onCreate={(t) => source.createTask(t)} />}
     </div>
   )
 }
